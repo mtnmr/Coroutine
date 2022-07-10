@@ -25,6 +25,7 @@ import com.example.android.advancedcoroutines.util.CacheOnSuccess
 import com.example.android.advancedcoroutines.utils.ComparablePair
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.withContext
 
 /**
@@ -41,6 +42,29 @@ class PlantRepository private constructor(
     private val plantService: NetworkService,
     private val defaultDispatcher: CoroutineDispatcher = Dispatchers.Default
 ) {
+
+    //flow
+
+    private val customSortFlow = flow { emit(plantsListSortOrderCache.getOrAwait()) }
+//    private val customSortFlow = plantsListSortOrderCache::getOrAwait.asFlow() でも良い
+
+    val plantsFlow :Flow<List<Plant>>
+        get() = plantDao.getPlantsFlow()
+            .combine(customSortFlow){plants, sortOrder ->
+                plants.applySort(sortOrder)
+            }
+            .flowOn(defaultDispatcher)
+            .conflate()
+
+    fun getPlantsWithGrowZoneFlow(growZoneNumber: GrowZone): Flow<List<Plant>> {
+        return plantDao.getPlantsWithGrowZoneNumberFlow(growZoneNumber.number)
+            .map { plantList ->
+                val sortOrderFromNetwork = plantsListSortOrderCache.getOrAwait()
+                val nextValue = plantList.applyMainSafeSort(sortOrderFromNetwork)
+                nextValue
+            }
+    }
+
 
     //sunflowerのutilの中のCacheOnSuccess
     //ネットワークからカスタムの並べ替え順を取得して、メモリにキャッシュする
